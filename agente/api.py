@@ -154,9 +154,9 @@ def stock_en_ubicacion(location_id: int):
 
 
 @app.get("/work-orders")
-def ordenes():
+def ordenes(demo: bool = False):
     with conexion() as cur:
-        return consultas.ordenes(cur)
+        return consultas.ordenes(cur, demo)
 
 
 @app.get("/buscar")

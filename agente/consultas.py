@@ -3,6 +3,7 @@
 import re
 from datetime import datetime
 
+import config
 from inventario import exigir, fecha_texto, movimiento_json, orden_por_codigo, pieza, piezas_con_sku, reservado
 
 
@@ -35,6 +36,7 @@ def kardex(cur, part_id):
 
 def materiales(cur, codigo):
     orden = exigir(orden_por_codigo(cur, codigo), f"no existe la orden {codigo}")
+    # En una orden dada de baja se muestran también las líneas liberadas, como historial.
     cur.execute("""SELECT n.inspection_item_id, n.bom_line_id, n.part_id, n.name, p.sku, n.required_qty AS required,
                      COALESCE(SUM(r.quantity - r.issued_qty) FILTER (WHERE r.status = 'active'), 0)::int AS reserved,
                      COALESCE(SUM(r.issued_qty), 0)::int AS issued,
@@ -44,15 +46,17 @@ def materiales(cur, codigo):
                    LEFT JOIN reservations r ON r.work_order_id = n.work_order_id AND r.bom_line_id = n.bom_line_id
                    LEFT JOIN shortages s ON s.work_order_id = n.work_order_id AND s.bom_line_id = n.bom_line_id
                                         AND s.status = 'open'
-                   WHERE n.work_order_id = %s AND n.active
+                   WHERE n.work_order_id = %s AND (n.active OR %s)
                    GROUP BY n.work_order_id, n.bom_line_id, p.part_id, s.shortage_id
-                   ORDER BY n.bom_line_id""", (orden["work_order_id"],))
+                   ORDER BY n.bom_line_id""", (orden["work_order_id"], orden["deleted_at"] is not None))
     lineas = cur.fetchall()
     cur.execute("SELECT model_name FROM models WHERE model_id = %s", (orden["model_id"],))
     modelo = cur.fetchone()
+    cur.execute("SELECT COUNT(*) AS n FROM inspections WHERE work_order_id = %s AND status = 'approved'",
+                (orden["work_order_id"],))
     return {"work_order_id": orden["work_order_id"], "code": orden["code"], "stage": orden["stage"],
             "model_name": modelo["model_name"] if modelo else None, "deleted": orden["deleted_at"] is not None,
-            "lines": lineas}
+            "approved_inspections": cur.fetchone()["n"], "lines": lineas}
 
 
 def faltantes(cur, codigo=None, part_id=None):
@@ -104,13 +108,18 @@ def stock_en_ubicacion(cur, location_id):
     return {"items": cur.fetchall()}
 
 
-def ordenes(cur):
-    cur.execute("""SELECT w.work_order_id, w.code, m.model_name, w.stage,
-                     (SELECT COUNT(*) FROM reservations r WHERE r.work_order_id = w.work_order_id AND r.status = 'active') AS reservas,
-                     (SELECT COUNT(*) FROM shortages s WHERE s.work_order_id = w.work_order_id AND s.status = 'open') AS faltantes
-                   FROM work_orders w LEFT JOIN models m ON m.model_id = w.model_id
-                   WHERE w.deleted_at IS NULL
-                   ORDER BY w.received_at DESC NULLS LAST, w.work_order_id DESC LIMIT 200""")
+def ordenes(cur, solo_demo=False):
+    """Órdenes vivas. Con `solo_demo`, las abiertas desde el panel del simulador, incluidas las dadas de baja."""
+    if solo_demo:
+        filtro, valores = "w.work_order_id BETWEEN %s AND %s", config.ORDENES_DEMO
+    else:
+        filtro, valores = "w.deleted_at IS NULL", ()
+    cur.execute(f"""SELECT w.work_order_id, w.code, m.model_name, w.stage, w.deleted_at IS NOT NULL AS dada_de_baja,
+                      (SELECT COUNT(*) FROM reservations r WHERE r.work_order_id = w.work_order_id AND r.status = 'active') AS reservas,
+                      (SELECT COUNT(*) FROM shortages s WHERE s.work_order_id = w.work_order_id AND s.status = 'open') AS faltantes
+                    FROM work_orders w LEFT JOIN models m ON m.model_id = w.model_id
+                    WHERE {filtro}
+                    ORDER BY w.received_at DESC NULLS LAST, w.work_order_id DESC LIMIT 200""", valores)
     return {"items": cur.fetchall()}
 
 

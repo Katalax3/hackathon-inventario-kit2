@@ -9,3 +9,7 @@ PUERTO_HTTPS = int(os.environ.get("PUERTO_HTTPS", "8443"))
 
 # Toda compra entra a la ubicación de recepción U-100 (regla 11 del contrato).
 UBICACION_RECEPCION = 100
+
+# Las órdenes abiertas desde el panel del simulador (las de la demo) se numeran desde 90001
+# (ver simulator/simulator.py). Las pruebas de contrato usan IDs de 9 dígitos.
+ORDENES_DEMO = (90001, 99_999_999)
