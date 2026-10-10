@@ -47,7 +47,8 @@ function campoEscaneo(idContenedor, tipo, alElegir) {
   const ayuda = tipo === "ubicacion" ? "Escanea o escribe la ubicación (ej. U-101)" : "Escanea o escribe la pieza (sku o nombre)";
   caja.innerHTML = `
     <div class="fila">
-      <input placeholder="${ayuda}" autocomplete="off">
+      <input placeholder="${ayuda}" autocomplete="off" list="${idContenedor}-opciones">
+      <datalist id="${idContenedor}-opciones"></datalist>
       <button type="button" class="secundario" title="Usar la cámara">📷</button>
     </div>
     <div class="camara" id="${idContenedor}-camara"></div>
@@ -56,6 +57,21 @@ function campoEscaneo(idContenedor, tipo, alElegir) {
   const resultado = caja.querySelector(".resultado");
   const campo = { valor: null };
   let ultimoTexto = null;
+
+  // Sugerencias "código · nombre" mientras se escribe. Cada texto apunta a su ubicación o pieza.
+  const sugerencias = new Map();
+  cargarCatalogo().then(catalogo => {
+    const lista = tipo === "ubicacion" ? catalogo.locations : catalogo.parts;
+    const texto = o => `${tipo === "ubicacion" ? o.code : (o.sku || "P-" + o.part_id)} · ${o.name}`;
+    const veces = {};
+    lista.forEach(o => { veces[texto(o)] = (veces[texto(o)] || 0) + 1; });
+    for (const o of lista) {
+      // Dos piezas con el mismo sku y nombre se distinguen por su P-<id>.
+      const repetida = veces[texto(o)] > 1;
+      sugerencias.set(repetida ? `${texto(o)} (P-${o.part_id})` : texto(o), o);
+    }
+    llenarDatalist(`${idContenedor}-opciones`, [...sugerencias.keys()]);
+  }).catch(() => { /* sin sugerencias se puede seguir escaneando */ });
 
   function elegir(objeto) {
     campo.valor = objeto;
@@ -70,6 +86,7 @@ function campoEscaneo(idContenedor, tipo, alElegir) {
     campo.valor = null;
     resultado.innerHTML = "";
     if (!texto.trim()) return;
+    if (sugerencias.has(texto)) return elegir(sugerencias.get(texto));
     try {
       const encontrado = await api("GET", "/buscar?q=" + encodeURIComponent(texto));
       const lista = tipo === "ubicacion" ? encontrado.locations : encontrado.parts;
@@ -94,6 +111,10 @@ function campoEscaneo(idContenedor, tipo, alElegir) {
   }
 
   entrada.addEventListener("change", () => identificar(entrada.value));
+  // Al tocar una sugerencia el navegador avisa con "input": se identifica en ese momento.
+  entrada.addEventListener("input", () => {
+    if (sugerencias.has(entrada.value)) identificar(entrada.value);
+  });
   // Los lectores USB "escriben" el código y mandan Enter.
   entrada.addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); identificar(entrada.value); }

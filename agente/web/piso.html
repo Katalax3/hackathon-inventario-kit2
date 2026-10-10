@@ -28,7 +28,7 @@
       <div class="campo"><label>2. Pieza</label><div id="r-pieza"></div></div>
       <p id="r-info"></p>
       <div class="campo"><label>Cantidad</label><input id="r-cantidad" type="number" min="1" value="1" inputmode="numeric"></div>
-      <div class="campo"><label>Técnico</label><input id="r-tecnico" placeholder="Tu nombre o número de empleado"></div>
+      <div class="campo"><label>Técnico</label><input id="r-tecnico" list="tecnicos" autocomplete="off" placeholder="Tu nombre o número de empleado"><datalist id="tecnicos"></datalist></div>
       <button id="r-boton">Retirar</button>
       <div id="r-mensaje"></div>
     </section>
@@ -47,7 +47,7 @@
       <div class="campo"><label>1. Ubicación a contar</label><div id="c-ubicacion"></div></div>
       <div id="c-lista"></div>
       <div class="campo"><label>¿Encontraste otra pieza? Escanéala</label><div id="c-pieza"></div></div>
-      <div class="campo"><label>Motivo (obligatorio)</label><input id="c-motivo" value="Conteo cíclico"></div>
+      <div class="campo"><label>Motivo (obligatorio)</label><input id="c-motivo" list="motivos" autocomplete="off" placeholder="Conteo cíclico"><datalist id="motivos"></datalist></div>
       <button id="c-boton">Registrar conteo</button>
       <div id="c-mensaje"></div>
     </section>

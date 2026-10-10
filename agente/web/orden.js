@@ -56,7 +56,7 @@ async function cargarOrden(codigo) {
 async function cargarListaDeOrdenes() {
   const { items } = await api("GET", "/work-orders");
   document.getElementById("ordenes").innerHTML =
-    items.map(o => `<option value="${t(o.code)}">${t(o.model_name || "")}</option>`).join("");
+    items.map(o => `<option value="${t(o.code)}">${t([o.model_name, o.stage].filter(Boolean).join(" · "))}</option>`).join("");
 }
 
 document.getElementById("buscar").onsubmit = e => {

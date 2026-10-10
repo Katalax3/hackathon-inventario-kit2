@@ -133,6 +133,21 @@ def buscar(cur, texto):
     return {"locations": ubicaciones, "parts": piezas}
 
 
+def catalogo(cur):
+    """Opciones para sugerir en los campos que se escriben a mano."""
+    # Si un código de ubicación se repite (lo hacen las pruebas), queda el de ID más bajo, igual que al escanear.
+    cur.execute("""SELECT DISTINCT ON (code) location_id, code, name FROM locations
+                   WHERE active ORDER BY code, location_id""")
+    ubicaciones = cur.fetchall()
+    cur.execute("SELECT part_id, sku, name FROM parts WHERE active ORDER BY name")
+    piezas = cur.fetchall()
+    cur.execute("SELECT DISTINCT issued_by AS v FROM movements WHERE type = 'issue' AND issued_by IS NOT NULL ORDER BY 1")
+    tecnicos = [f["v"] for f in cur.fetchall()]
+    cur.execute("SELECT DISTINCT reference AS v FROM movements WHERE type = 'adjustment' AND reference IS NOT NULL ORDER BY 1")
+    motivos = [f["v"] for f in cur.fetchall()]
+    return {"locations": ubicaciones, "parts": piezas, "technicians": tecnicos, "count_reasons": motivos}
+
+
 def resumen(cur, estado_consumidor):
     cur.execute("""SELECT (SELECT COUNT(*) FROM processed_events) AS eventos_procesados,
                           (SELECT COUNT(*) FROM pending_events) AS eventos_esperando,

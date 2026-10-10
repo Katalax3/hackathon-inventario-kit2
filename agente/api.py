@@ -165,6 +165,12 @@ def buscar(q: str):
         return consultas.buscar(cur, q)
 
 
+@app.get("/catalogo")
+def catalogo():
+    with conexion() as cur:
+        return consultas.catalogo(cur)
+
+
 @app.put("/parts/{part_id}/policy")
 def politica(part_id: int, datos: Politica):
     with transaccion() as cur:

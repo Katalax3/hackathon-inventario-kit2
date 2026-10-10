@@ -156,7 +156,7 @@ document.getElementById("c-boton").onclick = async () => {
     .map(r => ({ part_id: r.part_id, counted_quantity: Number(r.contado) }));
   if (!lineas.length) return mensaje("c-mensaje", "Escribe cuántas contaste de al menos una pieza", "aviso");
   try {
-    const { adjustments } = await api("POST", "/counts", { location_id: ubicacion.location_id, reason: valor("c-motivo"), lines: lineas });
+    const { adjustments } = await api("POST", "/counts", { location_id: ubicacion.location_id, reason: valor("c-motivo").trim() || "Conteo cíclico", lines: lineas });
     const texto = adjustments.length
       ? "Ajustes registrados: " + adjustments.map(a => `${renglones.find(r => r.part_id === a.part_id).name} ${a.delta > 0 ? "+" : ""}${a.delta}`).join(", ")
       : "Todo cuadra: no hubo ajustes";
@@ -169,5 +169,15 @@ document.getElementById("c-boton").onclick = async () => {
 
 // --- Al abrir la página ----------------------------------------------------------------------
 
-try { document.getElementById("r-tecnico").value = localStorage.getItem("tecnico") || ""; } catch (e) { /* sin almacenamiento */ }
+const MOTIVOS = ["Conteo cíclico", "Merma", "Pieza dañada", "Error de captura", "Pieza encontrada"];
+let tecnicoGuardado = "";
+try { tecnicoGuardado = localStorage.getItem("tecnico") || ""; } catch (e) { /* sin almacenamiento */ }
+document.getElementById("r-tecnico").value = tecnicoGuardado;
+llenarDatalist("motivos", MOTIVOS);
+
+// Sugerencias: técnicos que ya retiraron piezas y motivos usados en conteos anteriores.
+cargarCatalogo().then(catalogo => {
+  llenarDatalist("tecnicos", [tecnicoGuardado, ...catalogo.technicians]);
+  llenarDatalist("motivos", [...MOTIVOS, ...catalogo.count_reasons]);
+}).catch(() => { /* sin sugerencias se puede escribir igual */ });
 cargarOrdenes().catch(e => mensaje("r-mensaje", e.message, "error"));

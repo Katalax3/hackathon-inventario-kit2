@@ -32,6 +32,21 @@ function fecha(iso) {
   return iso ? new Date(iso).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }) : "";
 }
 
+// Ubicaciones, piezas, técnicos y motivos para sugerir en los campos. Se pide una sola vez por página.
+let promesaCatalogo = null;
+function cargarCatalogo() {
+  if (!promesaCatalogo) promesaCatalogo = api("GET", "/catalogo");
+  return promesaCatalogo;
+}
+
+// Llena un <datalist> con textos; el navegador los sugiere mientras se escribe.
+function llenarDatalist(id, valores) {
+  // Sin repetidos, aunque cambien las mayúsculas ("Merma" y "merma" son el mismo).
+  const vistos = new Set();
+  const unicos = valores.filter(v => v && !vistos.has(v.toLowerCase()) && vistos.add(v.toLowerCase()));
+  document.getElementById(id).innerHTML = unicos.map(v => `<option value="${t(v)}"></option>`).join("");
+}
+
 function tabla(encabezados, renglones) {
   if (!renglones.length) return `<p class="suave">Nada por ahora.</p>`;
   return `<div class="tabla"><table><tr>${encabezados.join("")}</tr>${renglones.join("")}</table></div>`;
