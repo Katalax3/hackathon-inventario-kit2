@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orden de trabajo</title>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <nav>
+    <strong>Inventario del taller</strong>
+    <a href="index.html">Almacén</a>
+    <a href="orden.html" class="activo">Orden</a>
+    <a href="piso.html">Piso</a>
+    <a href="kardex.html">Kardex</a>
+  </nav>
+
+  <main>
+    <section>
+      <h1>Orden de trabajo</h1>
+      <form id="buscar" class="fila">
+        <input id="codigo" list="ordenes" placeholder="Código de la orden (ej. R061026012)" autocomplete="off">
+        <datalist id="ordenes"></datalist>
+        <button>Buscar</button>
+      </form>
+    </section>
+
+    <section id="detalle" hidden>
+      <h2 id="titulo"></h2>
+      <p id="subtitulo" class="suave"></p>
+      <div id="resumen" class="resumen campo"></div>
+      <div id="lineas"></div>
+      <p><a id="ir-a-piso" href="piso.html">Retirar piezas de esta orden en piso →</a></p>
+    </section>
+    <div id="mensaje"></div>
+  </main>
+
+  <script src="comun.js"></script>
+  <script src="orden.js"></script>
+</body>
+</html>

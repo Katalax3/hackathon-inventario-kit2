@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Piso del taller</title>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <nav>
+    <strong>Inventario del taller</strong>
+    <a href="index.html">Almacén</a>
+    <a href="orden.html">Orden</a>
+    <a href="piso.html" class="activo">Piso</a>
+    <a href="kardex.html">Kardex</a>
+  </nav>
+
+  <main>
+    <div class="pestanas">
+      <button data-pestana="retirar" class="activo">Retirar</button>
+      <button data-pestana="transferir">Transferir</button>
+      <button data-pestana="contar">Contar</button>
+    </div>
+
+    <section id="retirar">
+      <div class="campo"><label>Orden de trabajo</label><select id="r-orden"></select></div>
+      <div class="campo"><label>1. Ubicación</label><div id="r-ubicacion"></div></div>
+      <div class="campo"><label>2. Pieza</label><div id="r-pieza"></div></div>
+      <p id="r-info"></p>
+      <div class="campo"><label>Cantidad</label><input id="r-cantidad" type="number" min="1" value="1" inputmode="numeric"></div>
+      <div class="campo"><label>Técnico</label><input id="r-tecnico" placeholder="Tu nombre o número de empleado"></div>
+      <button id="r-boton">Retirar</button>
+      <div id="r-mensaje"></div>
+    </section>
+
+    <section id="transferir" hidden>
+      <div class="campo"><label>1. Ubicación de origen</label><div id="t-origen"></div></div>
+      <div class="campo"><label>2. Pieza</label><div id="t-pieza"></div></div>
+      <p id="t-info"></p>
+      <div class="campo"><label>3. Ubicación de destino</label><div id="t-destino"></div></div>
+      <div class="campo"><label>Cantidad</label><input id="t-cantidad" type="number" min="1" value="1" inputmode="numeric"></div>
+      <button id="t-boton">Transferir</button>
+      <div id="t-mensaje"></div>
+    </section>
+
+    <section id="contar" hidden>
+      <div class="campo"><label>1. Ubicación a contar</label><div id="c-ubicacion"></div></div>
+      <div id="c-lista"></div>
+      <div class="campo"><label>¿Encontraste otra pieza? Escanéala</label><div id="c-pieza"></div></div>
+      <div class="campo"><label>Motivo (obligatorio)</label><input id="c-motivo" value="Conteo cíclico"></div>
+      <button id="c-boton">Registrar conteo</button>
+      <div id="c-mensaje"></div>
+    </section>
+  </main>
+
+  <script src="comun.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="escaner.js"></script>
+  <script src="piso.js"></script>
+</body>
+</html>

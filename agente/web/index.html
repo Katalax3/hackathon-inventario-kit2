@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Almacén del taller</title>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <nav>
+    <strong>Inventario del taller</strong>
+    <a href="index.html" class="activo">Almacén</a>
+    <a href="orden.html">Orden</a>
+    <a href="piso.html">Piso</a>
+    <a href="kardex.html">Kardex</a>
+  </nav>
+
+  <main>
+    <section>
+      <h2>Estado del servicio</h2>
+      <div id="estado" class="resumen"></div>
+    </section>
+
+    <section id="relacionar" hidden>
+      <h2>Relacionar recepción</h2>
+      <p id="relacionar-detalle"></p>
+      <div class="campo"><label>Pieza del catálogo</label><div id="relacionar-pieza"></div></div>
+      <div class="fila">
+        <button id="relacionar-boton">Dar entrada a esta pieza</button>
+        <button id="relacionar-cancelar" class="secundario">Cancelar</button>
+      </div>
+      <div id="relacionar-mensaje"></div>
+    </section>
+
+    <section>
+      <h2>Existencias</h2>
+      <div class="campo"><input id="filtro" placeholder="Filtrar por nombre, sku o ubicación"></div>
+      <div id="existencias"></div>
+    </section>
+
+    <section>
+      <h2>Faltantes abiertos</h2>
+      <div id="faltantes"></div>
+    </section>
+
+    <section>
+      <h2>Sugerencias de compra</h2>
+      <div id="sugerencias"></div>
+    </section>
+
+    <section>
+      <h2>Recepciones sin relacionar</h2>
+      <p class="suave">Compras cuyo número de parte no coincide con ninguna pieza (o con varias).</p>
+      <div id="sin-relacionar"></div>
+    </section>
+  </main>
+
+  <script src="comun.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="escaner.js"></script>
+  <script src="almacen.js"></script>
+</body>
+</html>

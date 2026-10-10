@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kardex de pieza</title>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <nav>
+    <strong>Inventario del taller</strong>
+    <a href="index.html">Almacén</a>
+    <a href="orden.html">Orden</a>
+    <a href="piso.html">Piso</a>
+    <a href="kardex.html" class="activo">Kardex</a>
+  </nav>
+
+  <main>
+    <section>
+      <h1>Kardex de una pieza</h1>
+      <div id="pieza"></div>
+    </section>
+
+    <div id="detalle" hidden>
+      <section>
+        <h2 id="titulo"></h2>
+        <div id="saldo" class="resumen campo"></div>
+        <div id="ubicaciones"></div>
+      </section>
+
+      <section>
+        <h2>Mínimo y máximo</h2>
+        <p class="suave">Si lo disponible baja del mínimo, se sugiere comprar hasta el máximo (o la cantidad de reorden).</p>
+        <div class="rejilla campo">
+          <div><label class="suave">Mínimo</label><input id="min" type="number" min="0" inputmode="numeric"></div>
+          <div><label class="suave">Máximo</label><input id="max" type="number" min="0" inputmode="numeric"></div>
+          <div><label class="suave">Reorden</label><input id="reorden" type="number" min="1" inputmode="numeric"></div>
+          <div><label class="suave">Entrega (días)</label><input id="dias" type="number" min="0" inputmode="numeric"></div>
+        </div>
+        <button id="guardar-politica">Guardar</button>
+        <div id="politica-mensaje"></div>
+      </section>
+
+      <section>
+        <h2>Movimientos (del más reciente al más antiguo)</h2>
+        <div id="movimientos"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="comun.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="escaner.js"></script>
+  <script src="kardex.js"></script>
+</body>
+</html>
