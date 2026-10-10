@@ -47,6 +47,7 @@ reporta como faltante sin identificar (`part_id: null`) hasta que se dé de alta
 - Lo que llega antes de tiempo (inspección antes que su orden o su pieza) se guarda en
   `pending_events` y se reintenta en orden por llave. Lo que falla tras 3 intentos va a
   `inventory.dlq` sin detener el consumo.
-- **Reconstrucción:** con `--reconstruir` se vacían las tablas y se releen los tópicos desde el
-  inicio. Se llega a la misma existencia por pieza y ubicación (comprobado con
-  `run_tests.py snapshot/compare`).
+- **Reconstrucción exacta:** todo lo aplicado (eventos y operaciones de piso con su fecha) se anota
+  en orden, en la misma transacción, y se publica en el tópico `inventory.bitacora`. Si se borra
+  la base, el agente la crea y repite la bitácora: queda idéntica tabla por tabla, no solo la
+  existencia (comprobado con `snapshot/compare` y comparando todas las tablas).

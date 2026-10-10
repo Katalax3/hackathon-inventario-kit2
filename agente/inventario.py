@@ -18,6 +18,10 @@ from psycopg.types.json import Jsonb
 import config
 
 
+# True mientras se repite la bitácora al reconstruir la base (ver bitacora.py).
+reproduciendo = False
+
+
 class Esperar(Exception):
     """El evento menciona algo que todavía no conocemos: se guarda y se reintenta después."""
 
@@ -54,8 +58,9 @@ def emitir(cur, tipo, llave, datos):
     Como se guarda en la misma transacción que el cambio, nunca se pierde ni se inventa."""
     evento = {"event_id": str(uuid.uuid4()), "event_type": tipo, "event_version": 1,
               "occurred_at": fecha_texto(ahora()), "source": "inventory", "key": llave, "data": datos}
-    cur.execute("INSERT INTO outbox (event_id, event_type, event_key, payload) VALUES (%s, %s, %s, %s)",
-                (evento["event_id"], tipo, llave, Jsonb(evento)))
+    # Al repetir la bitácora estos eventos ya se habían publicado: se guardan como enviados.
+    cur.execute("INSERT INTO outbox (event_id, event_type, event_key, payload, published_at) VALUES (%s, %s, %s, %s, %s)",
+                (evento["event_id"], tipo, llave, Jsonb(evento), ahora() if reproduciendo else None))
 
 
 # --- Consultas básicas --------------------------------------------------------------------
@@ -341,7 +346,7 @@ def guardar_sin_relacionar(cur, compra, candidatas):
         "description": compra["description"], "quantity": compra["quantity"]})
 
 
-def relacionar_recepcion(cur, recepcion_id, part_id, location_id=None):
+def relacionar_recepcion(cur, recepcion_id, part_id, location_id=None, fecha=None):
     cur.execute("SELECT * FROM unmatched_receipts WHERE id = %s", (recepcion_id,))
     recepcion = exigir(cur.fetchone(), f"no existe la recepción {recepcion_id}")
     if recepcion["status"] != "pending":
@@ -350,7 +355,7 @@ def relacionar_recepcion(cur, recepcion_id, part_id, location_id=None):
     exigir(ubicacion(cur, location_id or config.UBICACION_RECEPCION), f"no existe la ubicación {location_id}")
     movimiento = registrar_entrada(cur, part_id, recepcion["quantity"], str(recepcion["unit_price"] or "0.00"),
                                    recepcion["currency"] or "MXN", recepcion["purchase_line_id"],
-                                   recepcion["work_order_code"], ahora(), location_id or config.UBICACION_RECEPCION)
+                                   recepcion["work_order_code"], fecha or ahora(), location_id or config.UBICACION_RECEPCION)
     cur.execute("""UPDATE unmatched_receipts SET status = 'resolved', resolved_part_id = %s, resolved_at = now()
                    WHERE id = %s""", (part_id, recepcion_id))
     return movimiento
@@ -358,7 +363,7 @@ def relacionar_recepcion(cur, recepcion_id, part_id, location_id=None):
 
 # --- Operaciones de piso ------------------------------------------------------------------
 
-def registrar_salida(cur, codigo, part_id, location_id, cantidad, entregado_por):
+def registrar_salida(cur, codigo, part_id, location_id, cantidad, entregado_por, fecha=None):
     """El técnico retira una pieza contra su orden. Primero consume lo reservado para esa orden."""
     orden = exigir(orden_por_codigo(cur, codigo), f"no existe la orden {codigo}")
     if orden["deleted_at"]:
@@ -375,7 +380,7 @@ def registrar_salida(cur, codigo, part_id, location_id, cantidad, entregado_por)
     if disponible(cur, part_id) < cantidad - de_la_reserva:
         raise Conflicto("lo que hay está reservado para otras órdenes")
 
-    movimiento = registrar_movimiento(cur, "issue", part_id, location_id, -cantidad, work_order_id=orden["work_order_id"],
+    movimiento = registrar_movimiento(cur, "issue", part_id, location_id, -cantidad, fecha, work_order_id=orden["work_order_id"],
                                       issued_by=str(entregado_por), reference=codigo)
     pendiente = de_la_reserva
     for r in reservas:
@@ -394,7 +399,7 @@ def registrar_salida(cur, codigo, part_id, location_id, cantidad, entregado_por)
     return movimiento
 
 
-def transferir(cur, part_id, origen, destino, cantidad):
+def transferir(cur, part_id, origen, destino, cantidad, fecha=None):
     exigir(pieza(cur, part_id), f"no existe la pieza {part_id}")
     exigir(ubicacion(cur, origen), f"no existe la ubicación {origen}")
     exigir(ubicacion(cur, destino), f"no existe la ubicación {destino}")
@@ -404,16 +409,16 @@ def transferir(cur, part_id, origen, destino, cantidad):
         raise Conflicto("no hay suficiente en la ubicación de origen")
 
     transferencia = uuid.uuid4()
-    registrar_movimiento(cur, "transfer_out", part_id, origen, -cantidad, transfer_id=transferencia,
+    registrar_movimiento(cur, "transfer_out", part_id, origen, -cantidad, fecha, transfer_id=transferencia,
                          reference=f"a ubicación {destino}")
-    entrada = registrar_movimiento(cur, "transfer_in", part_id, destino, cantidad, transfer_id=transferencia,
+    entrada = registrar_movimiento(cur, "transfer_in", part_id, destino, cantidad, fecha, transfer_id=transferencia,
                                    reference=f"de ubicación {origen}")
     emitir(cur, "stock.transferred", f"part:{part_id}",
            {"part_id": part_id, "from_location_id": origen, "to_location_id": destino, "quantity": cantidad})
     return entrada
 
 
-def contar(cur, location_id, motivo, lineas):
+def contar(cur, location_id, motivo, lineas, fecha=None):
     """Conteo cíclico: por cada diferencia entre lo contado y el sistema registra un ajuste."""
     if not motivo.strip():
         raise Invalido("el motivo es obligatorio")
@@ -425,7 +430,7 @@ def contar(cur, location_id, motivo, lineas):
         delta = linea["counted_quantity"] - existencia(cur, part_id, location_id)
         if delta == 0:
             continue
-        registrar_movimiento(cur, "adjustment", part_id, location_id, delta, reference=motivo)
+        registrar_movimiento(cur, "adjustment", part_id, location_id, delta, fecha, reference=motivo)
         emitir(cur, "stock.adjusted", f"part:{part_id}",
                {"part_id": part_id, "location_id": location_id, "delta": delta, "reason": motivo})
         ajustes.append({"part_id": part_id, "delta": delta})

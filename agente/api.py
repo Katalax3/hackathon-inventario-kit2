@@ -1,5 +1,6 @@
 """API HTTP y pantallas. Rutas y campos según contract/openapi.yaml."""
 
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -7,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import bitacora
 import consultas
 import consumidor
 import inventario
@@ -23,6 +25,22 @@ async def sin_cache(request, call_next):
     respuesta = await call_next(request)
     respuesta.headers["Cache-Control"] = "no-cache"
     return respuesta
+
+
+@app.middleware("http")
+async def esperar_reconstruccion(request, call_next):
+    """Mientras se repite la bitácora nadie debe ver la base a medias. Las consultas de datos
+    esperan a que termine (hasta 9 s, menos que la espera de las pruebas) y las escrituras se
+    rechazan, porque cambiarían el orden. Las pantallas y /estado responden siempre."""
+    ruta = request.url.path
+    if consumidor.estado["reconstruyendo"] and ruta != "/estado" and ruta != "/" and "." not in ruta:
+        if request.method == "GET":
+            for _ in range(90):
+                await asyncio.sleep(0.1)
+                if not consumidor.estado["reconstruyendo"]:
+                    return await call_next(request)
+        return JSONResponse({"detail": "se está reconstruyendo la base; intenta en unos segundos"}, status_code=503)
+    return await call_next(request)
 
 
 @app.exception_handler(NoExiste)
@@ -121,30 +139,28 @@ def sin_relacionar():
 @app.post("/unmatched-receipts/{recepcion_id}/resolve")
 def relacionar(recepcion_id: int, datos: Relacion):
     with transaccion() as cur:
-        movimiento = inventario.relacionar_recepcion(cur, recepcion_id, datos.part_id, datos.location_id)
+        movimiento = bitacora.ejecutar(cur, "relacion", {"id": recepcion_id, **datos.model_dump()})
         return inventario.movimiento_json(movimiento)
 
 
 @app.post("/issues", status_code=201)
 def salida(datos: Salida):
     with transaccion() as cur:
-        movimiento = inventario.registrar_salida(cur, datos.work_order_code, datos.part_id, datos.location_id,
-                                                 datos.quantity, datos.issued_by)
+        movimiento = bitacora.ejecutar(cur, "salida", datos.model_dump())
         return inventario.movimiento_json(movimiento)
 
 
 @app.post("/transfers", status_code=201)
 def transferencia(datos: Transferencia):
     with transaccion() as cur:
-        movimiento = inventario.transferir(cur, datos.part_id, datos.from_location_id, datos.to_location_id,
-                                           datos.quantity)
+        movimiento = bitacora.ejecutar(cur, "transferencia", datos.model_dump())
         return inventario.movimiento_json(movimiento)
 
 
 @app.post("/counts", status_code=201)
 def conteo(datos: Conteo):
     with transaccion() as cur:
-        ajustes = inventario.contar(cur, datos.location_id, datos.reason, [l.model_dump() for l in datos.lines])
+        ajustes = bitacora.ejecutar(cur, "conteo", datos.model_dump())
         return {"adjustments": ajustes}
 
 
@@ -183,7 +199,7 @@ def catalogo():
 @app.put("/parts/{part_id}/policy")
 def politica(part_id: int, datos: Politica):
     with transaccion() as cur:
-        inventario.guardar_politica(cur, part_id, datos.model_dump())
+        bitacora.ejecutar(cur, "politica", {"part_id": part_id, "politica": datos.model_dump()})
         return {"ok": True}
 
 

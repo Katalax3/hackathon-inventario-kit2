@@ -145,7 +145,7 @@ def purchase_item_received(cur, d, evento):
     if len(piezas) == 1:
         inventario.registrar_entrada(cur, piezas[0]["part_id"], d["quantity"], d["unit_price"], d["currency"],
                                      d["line_id"], d["work_order_code"], d["received_at"])
-    elif segundos_esperando(cur, evento) < 3:
+    elif not inventario.reproduciendo and segundos_esperando(cur, evento) < 3:
         # La pieza puede venir en camino por shop.catalog: se le da un momento antes de la revisión manual.
         raise Esperar(f"sku {d['part_number']}")
     else:

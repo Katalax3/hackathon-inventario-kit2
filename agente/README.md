@@ -14,8 +14,9 @@ Simulador del taller ──Kafka──► consumidor.py ──► PostgreSQL (in
 
 ## Qué necesitas
 
-- Docker con el contenedor de PostgreSQL corriendo (por defecto se llama `postsql`; otro nombre se
-  indica con la variable `CONTENEDOR_POSTGRES`).
+- El kit levantado (`docker compose up -d` en la carpeta del kit).
+- PostgreSQL corriendo. La base no hace falta crearla: si no existe, el agente la crea con las tablas
+  de `esquema.sql` (sacadas de `inventario.dump`).
 - [uv](https://docs.astral.sh/uv/). Instala solo Python 3.12 y las librerías. Hace falta 3.12 porque
   `confluent-kafka` todavía no funciona con Python 3.14.
 
@@ -24,11 +25,9 @@ Simulador del taller ──Kafka──► consumidor.py ──► PostgreSQL (in
 Desde la carpeta del kit:
 
 ```bash
-agente/arrancar.sh
+uv run --python 3.12 --with-requirements agente/requirements.txt agente/main.py
 ```
 
-El script levanta el kit (`docker compose up -d`). La primera vez también crea la base
-`inventario_agente` desde `inventario.dump` (las tablas vacías), y al final arranca el agente.
 La conexión se configura con la variable `BASE_DATOS`; el valor por defecto está en `config.py`:
 `postgresql://postgres:its@localhost:5432/inventario_agente`.
 
@@ -62,32 +61,46 @@ escribir el código; un lector USB también funciona porque "escribe" y manda En
 
 ## Reconstruir desde cero
 
-Borra los datos de la base y vuelve a leer los tópicos desde el inicio:
+El agente anota en orden todo lo que aplica (eventos del taller y operaciones de piso) en su propio
+tópico, `inventory.bitacora`. Si la base se borra, basta con volver a arrancarlo: la crea, repite
+la bitácora y la deja **exactamente** como estaba, incluidas salidas, transferencias, conteos,
+recepciones relacionadas a mano y mínimos/máximos. Para vaciarla a propósito y reconstruir:
 
 ```bash
-agente/arrancar.sh --reconstruir
+uv run --python 3.12 --with-requirements agente/requirements.txt agente/main.py --reconstruir
 ```
 
-Las salidas, transferencias, conteos y recepciones relacionadas a mano se hacen por la API y no
-viven en Kafka, así que la reconstrucción no las recupera. Por eso el jurado revisa la
-reconstrucción antes de la demo.
+Mientras reconstruye, la API retiene las consultas hasta que termina (para no mostrar una base a
+medias) y rechaza las escrituras con 503.
+
+Si reinicias el kit desde cero (`RESET=1`), borra también la bitácora, o se repetiría la historia
+anterior: `docker compose exec redpanda rpk topic delete inventory.bitacora`.
 
 ## Pruebas de contrato
 
-Con el servicio corriendo:
+Con el servicio corriendo, como las corre el jurado:
 
 ```bash
-uv run --python 3.12 --with confluent-kafka==2.6.1 --with jsonschema contract-tests/run_tests.py
+docker compose run --rm contract-tests --api http://host.docker.internal:8000
+```
+
+Si tu firewall (por ejemplo `ufw`) bloquea lo que entra desde las redes de Docker, las pruebas no
+alcanzan la API ("la API no responde... timed out"). Permite los puertos del agente:
+
+```bash
+sudo ufw allow from 172.16.0.0/12 to any port 8000 proto tcp   # pruebas en Docker
+sudo ufw allow 8443/tcp                                          # celular en la misma red
 ```
 
 ## Archivos
 
 | Archivo | Qué hace |
 |---|---|
-| `arrancar.sh` | Un comando: levanta el kit, crea la base la primera vez y arranca el agente |
 | `main.py` | Arranca el agente: consumidor, publicador de eventos y servidor web |
 | `config.py` | Direcciones del broker y de la base, puertos |
-| `base_datos.py` | Conexión a PostgreSQL y el candado de escritura |
+| `base_datos.py` | Conexión a PostgreSQL, el candado de escritura y la creación de la base si no existe |
+| `bitacora.py` | Anota en orden todo lo que se aplica, para reconstruir la base exactamente |
+| `esquema.sql` | Las tablas, sacadas de `inventario.dump` |
 | `consumidor.py` | Lee Kafka, aplica cada evento una sola vez, reintenta lo que llega antes de tiempo, manda errores a `inventory.dlq` y publica `inventory.events` |
 | `manejadores.py` | Qué hacer con cada evento del taller (una función por tipo de evento) |
 | `inventario.py` | Las reglas: saldos, reservas, faltantes, entradas, salidas, transferencias, conteos |

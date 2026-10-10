@@ -1,7 +1,7 @@
 """Arranca el servicio de inventario: consumidor de Kafka + API + pantallas.
 
     uv run --python 3.12 --with-requirements agente/requirements.txt agente/main.py
-    ... agente/main.py --reconstruir     # borra los datos y relee los tópicos desde el inicio
+    ... agente/main.py --reconstruir     # borra los datos y los reconstruye desde la bitácora y los tópicos
 """
 
 import argparse
@@ -21,10 +21,13 @@ CERTIFICADO, LLAVE = AQUI / "certificado.pem", AQUI / "llave.pem"
 
 def main():
     parser = argparse.ArgumentParser(description="Servicio de inventario del taller")
-    parser.add_argument("--reconstruir", action="store_true", help="borra los datos y relee los tópicos desde el inicio")
+    parser.add_argument("--reconstruir", action="store_true", help="borra los datos y los reconstruye desde la bitácora y los tópicos")
     args = parser.parse_args()
 
+    base_datos.crear_si_falta()
     base_datos.abrir(reconstruir=args.reconstruir)
+    # Si la base quedó vacía (se borró o se pidió --reconstruir), el consumidor repite primero la bitácora.
+    consumidor.preparar_bitacora()
     threading.Thread(target=consumidor.sin_detenerse, args=(consumidor.consumir,), daemon=True).start()
     threading.Thread(target=consumidor.sin_detenerse, args=(consumidor.publicar_salidas,), daemon=True).start()
 

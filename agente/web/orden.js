@@ -2,6 +2,11 @@
 
 let codigoActual = null;
 
+// El nombre de una orden es el del equipo que entró al taller: marca y modelo.
+function nombreOrden(o) {
+  return [o.brand, o.model_name].filter(Boolean).join(" ");
+}
+
 function estadoLinea(l) {
   if (l.required !== null && l.issued >= l.required) return `<span class="etiqueta ok">Entregado</span>`;
   if (l.missing === null || l.missing > 0) return `<span class="etiqueta error">Falta</span>`;
@@ -31,8 +36,9 @@ async function cargarOrden(codigo) {
     codigoActual = orden.code;
     mensaje("mensaje", "");
     document.getElementById("detalle").hidden = false;
-    document.getElementById("titulo").textContent = orden.code + (orden.deleted ? " (dada de baja)" : "");
-    document.getElementById("subtitulo").textContent = [orden.model_name, orden.stage].filter(Boolean).join(" · ");
+    document.getElementById("titulo").textContent =
+      [orden.code, nombreOrden(orden)].filter(Boolean).join(" · ") + (orden.deleted ? " (dada de baja)" : "");
+    document.getElementById("subtitulo").textContent = "Etapa: " + (orden.stage || "sin etapa");
     document.getElementById("ir-a-piso").href = "piso.html?orden=" + encodeURIComponent(orden.code);
 
     const suma = campo => orden.lines.reduce((s, l) => s + (l[campo] || 0), 0);
@@ -63,16 +69,22 @@ async function cargarOrden(codigo) {
   }
 }
 
-let codigosSugeridos = [];
+// Cada sugerencia es "número · nombre", así se encuentra escribiendo cualquiera de los dos.
+// El Map guarda a qué número de orden corresponde cada texto.
+let sugerencias = new Map();
 
 async function cargarListaDeOrdenes() {
   // Se sugieren todas las órdenes; primero las de la demo (abiertas en el panel, aunque estén dadas de baja).
   const [demo, todas] = await Promise.all([api("GET", "/work-orders?demo=true"), api("GET", "/work-orders")]);
-  const codigos = [...new Set([...demo.items, ...todas.items].map(o => o.code))];
+  const nuevas = new Map();
+  for (const o of [...demo.items, ...todas.items]) {
+    const texto = [o.code, nombreOrden(o)].filter(Boolean).join(" · ");
+    if (!nuevas.has(texto)) nuevas.set(texto, o.code);
+  }
   // Solo se redibuja si cambió, para no cerrar la lista mientras alguien la está viendo.
-  if (codigos.join() !== codigosSugeridos.join()) {
-    codigosSugeridos = codigos;
-    llenarDatalist("ordenes", codigos);
+  if ([...nuevas.keys()].join() !== [...sugerencias.keys()].join()) {
+    sugerencias = nuevas;
+    llenarDatalist("ordenes", [...nuevas.keys()]);
   }
 }
 
@@ -80,13 +92,13 @@ const campoCodigo = document.getElementById("codigo");
 
 document.getElementById("buscar").onsubmit = e => {
   e.preventDefault();
-  const codigo = campoCodigo.value.trim();
-  if (codigo) cargarOrden(codigo);
+  const texto = campoCodigo.value.trim();
+  if (texto) cargarOrden(sugerencias.get(texto) || texto);
 };
 
 // Al elegir una sugerencia, la orden se abre sin tener que presionar Buscar.
 campoCodigo.addEventListener("input", () => {
-  if (codigosSugeridos.includes(campoCodigo.value)) cargarOrden(campoCodigo.value);
+  if (sugerencias.has(campoCodigo.value)) cargarOrden(sugerencias.get(campoCodigo.value));
 });
 
 const deLaUrl = new URLSearchParams(location.search).get("codigo");

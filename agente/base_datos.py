@@ -1,7 +1,11 @@
 """Conexión a PostgreSQL."""
 
 from contextlib import contextmanager
+from pathlib import Path
 
+import psycopg
+from psycopg import sql
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -11,7 +15,9 @@ pool = ConnectionPool(config.BASE_DATOS, kwargs={"row_factory": dict_row}, min_s
 
 TABLAS = ["movements", "reservations", "shortages", "needs", "inspections", "work_orders", "bom_lines",
           "models", "stock_policies", "reorder_suggestions", "unmatched_receipts", "parts", "locations",
-          "outbox", "pending_events", "processed_events"]
+          "outbox", "pending_events", "processed_events", "bitacora"]
+
+ESQUEMA = Path(__file__).parent / "esquema.sql"
 
 
 @contextmanager
@@ -31,9 +37,25 @@ def transaccion():
         yield cur
 
 
+def crear_si_falta():
+    """Si la base no existe la crea, y si no tiene tablas les pone las de esquema.sql."""
+    nombre = conninfo_to_dict(config.BASE_DATOS)["dbname"]
+    with psycopg.connect(make_conninfo(config.BASE_DATOS, dbname="postgres"), autocommit=True) as conn:
+        if not conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (nombre,)).fetchone():
+            print(f"la base {nombre} no existe: se crea", flush=True)
+            conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(nombre)))
+    with psycopg.connect(config.BASE_DATOS, autocommit=True) as conn:
+        if conn.execute("SELECT to_regclass('public.parts')").fetchone()[0] is None:
+            print("la base no tiene tablas: se crean desde esquema.sql", flush=True)
+            conn.execute(ESQUEMA.read_text())
+
+
 def abrir(reconstruir=False):
     pool.open(wait=True)
     with transaccion() as cur:
+        # Copia en orden de todo lo que se aplica; ver bitacora.py.
+        cur.execute("""CREATE TABLE IF NOT EXISTS bitacora (
+                         id bigserial PRIMARY KEY, registro jsonb NOT NULL, publicado boolean NOT NULL DEFAULT false)""")
         if reconstruir:
             # TRUNCATE no dispara el candado de "movements es inmutable", que es por renglón.
             cur.execute(f"TRUNCATE {', '.join(TABLAS)} RESTART IDENTITY CASCADE")

@@ -50,12 +50,13 @@ def materiales(cur, codigo):
                    GROUP BY n.work_order_id, n.bom_line_id, p.part_id, s.shortage_id
                    ORDER BY n.bom_line_id""", (orden["work_order_id"], orden["deleted_at"] is not None))
     lineas = cur.fetchall()
-    cur.execute("SELECT model_name FROM models WHERE model_id = %s", (orden["model_id"],))
+    cur.execute("SELECT brand, model_name FROM models WHERE model_id = %s", (orden["model_id"],))
     modelo = cur.fetchone()
     cur.execute("SELECT COUNT(*) AS n FROM inspections WHERE work_order_id = %s AND status = 'approved'",
                 (orden["work_order_id"],))
     return {"work_order_id": orden["work_order_id"], "code": orden["code"], "stage": orden["stage"],
-            "model_name": modelo["model_name"] if modelo else None, "deleted": orden["deleted_at"] is not None,
+            "model_name": modelo["model_name"] if modelo else None,
+            "brand": modelo["brand"] if modelo else None, "deleted": orden["deleted_at"] is not None,
             "approved_inspections": cur.fetchone()["n"], "lines": lineas}
 
 
@@ -114,7 +115,7 @@ def ordenes(cur, solo_demo=False):
         filtro, valores = "w.work_order_id BETWEEN %s AND %s", config.ORDENES_DEMO
     else:
         filtro, valores = "w.deleted_at IS NULL", ()
-    cur.execute(f"""SELECT w.work_order_id, w.code, m.model_name, w.stage, w.deleted_at IS NOT NULL AS dada_de_baja,
+    cur.execute(f"""SELECT w.work_order_id, w.code, m.brand, m.model_name, w.stage, w.deleted_at IS NOT NULL AS dada_de_baja,
                       (SELECT COUNT(*) FROM reservations r WHERE r.work_order_id = w.work_order_id AND r.status = 'active') AS reservas,
                       (SELECT COUNT(*) FROM shortages s WHERE s.work_order_id = w.work_order_id AND s.status = 'open') AS faltantes
                     FROM work_orders w LEFT JOIN models m ON m.model_id = w.model_id

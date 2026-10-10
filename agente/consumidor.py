@@ -5,9 +5,12 @@ import time
 import traceback
 
 from confluent_kafka import OFFSET_BEGINNING, Consumer, Producer, TopicPartition
+from confluent_kafka.admin import AdminClient, NewTopic
 from psycopg.types.json import Jsonb
 
+import bitacora
 import config
+import inventario
 import manejadores
 from base_datos import conexion, transaccion
 from inventario import Esperar
@@ -16,7 +19,8 @@ TOPICO_CATALOGO = "shop.catalog"
 TOPICOS_TALLER = ["shop.work_orders", "shop.inspections", "shop.purchasing"]
 
 # Lo muestra la pantalla de almacén (observabilidad del consumidor).
-estado = {"catalogo_cargado": False, "lag": {}, "errores": 0, "ultimo_error": None}
+# "reconstruyendo" empieza en True: la API no acepta escrituras hasta revisar si hay que repetir la bitácora.
+estado = {"catalogo_cargado": False, "reconstruyendo": True, "lag": {}, "errores": 0, "ultimo_error": None}
 productor = None
 
 
@@ -81,6 +85,7 @@ def aplicar(topico, evento):
         cur.execute("INSERT INTO processed_events (event_id, event_type, topic) VALUES (%s, %s, %s)",
                     (evento["event_id"], evento["event_type"], topico))
         cur.execute("DELETE FROM pending_events WHERE event_id = %s", (evento["event_id"],))
+        bitacora.anotar(cur, {"tipo": "evento", "topic": topico, "evento": evento})
 
 
 def procesar(topico, evento):
@@ -102,6 +107,7 @@ def procesar(topico, evento):
             cur.execute("DELETE FROM pending_events WHERE event_id = %s", (evento.get("event_id"),))
             cur.execute("""INSERT INTO processed_events (event_id, event_type, topic) VALUES (%s, %s, %s)
                            ON CONFLICT DO NOTHING""", (evento.get("event_id"), evento.get("event_type", "?"), topico))
+            bitacora.anotar(cur, {"tipo": "descartado", "topic": topico, "evento": evento})
     except Exception:
         pass  # el evento ni siquiera trae un event_id válido; ya quedó en la DLQ
 
@@ -125,6 +131,9 @@ def reintentar_pendientes():
 
 def mandar_a_dlq(llave, valor, error):
     """Lo que no se pudo procesar va a inventory.dlq sin detener el consumo."""
+    global productor
+    if productor is None:
+        productor = Producer({"bootstrap.servers": config.BROKER})
     estado["errores"] += 1
     estado["ultimo_error"] = error
     print(f"a inventory.dlq: {error}", flush=True)
@@ -142,8 +151,7 @@ def medir_lag(consumidores):
 
 
 def consumir():
-    global productor
-    productor = Producer({"bootstrap.servers": config.BROKER})
+    reconstruir_desde_bitacora()
 
     # Regla 22: primero todo el catálogo; si no, las compras llegarían antes que sus piezas.
     catalogo = abrir_consumidor([TOPICO_CATALOGO])
@@ -170,21 +178,95 @@ def consumir():
 
 
 def publicar_salidas():
-    """Manda a inventory.events lo que quedó en la tabla outbox."""
+    """Manda a Kafka lo pendiente: los eventos de salida (outbox) y la bitácora."""
     salida = Producer({"bootstrap.servers": config.BROKER, "enable.idempotence": True})
     while True:
-        with conexion() as cur:
-            cur.execute("SELECT id, event_key, payload FROM outbox WHERE published_at IS NULL ORDER BY id LIMIT 500")
-            filas = cur.fetchall()
-        if not filas:
+        enviados = publicar_outbox(salida) + publicar_bitacora(salida)
+        if not enviados:
             time.sleep(0.2)
-            continue
-        for fila in filas:
-            salida.produce("inventory.events", key=fila["event_key"].encode(),
-                           value=json.dumps(fila["payload"], ensure_ascii=False).encode())
-        salida.flush(10)
+
+
+def publicar_outbox(salida):
+    with conexion() as cur:
+        cur.execute("SELECT id, event_key, payload FROM outbox WHERE published_at IS NULL ORDER BY id LIMIT 500")
+        filas = cur.fetchall()
+    for fila in filas:
+        salida.produce("inventory.events", key=fila["event_key"].encode(),
+                       value=json.dumps(fila["payload"], ensure_ascii=False).encode())
+    salida.flush(10)
+    if filas:
         with conexion() as cur:
             cur.execute("UPDATE outbox SET published_at = now() WHERE id = ANY(%s)", ([f["id"] for f in filas],))
+    return len(filas)
+
+
+def publicar_bitacora(salida):
+    """En el orden en que se aplicó (por id), a un tópico de una sola partición."""
+    with conexion() as cur:
+        cur.execute("SELECT id, registro FROM bitacora WHERE NOT publicado ORDER BY id LIMIT 500")
+        filas = cur.fetchall()
+    for fila in filas:
+        salida.produce(bitacora.TOPICO, value=json.dumps(fila["registro"], ensure_ascii=False).encode())
+    salida.flush(10)
+    if filas:
+        with conexion() as cur:
+            cur.execute("UPDATE bitacora SET publicado = true WHERE id = ANY(%s)", ([f["id"] for f in filas],))
+    return len(filas)
+
+
+# --- Reconstrucción ----------------------------------------------------------------------
+
+def preparar_bitacora():
+    """Crea el tópico de la bitácora si no existe. Una sola partición para conservar el orden."""
+    admin = AdminClient({"bootstrap.servers": config.BROKER})
+    if bitacora.TOPICO not in admin.list_topics(timeout=30).topics:
+        admin.create_topics([NewTopic(bitacora.TOPICO, num_partitions=1, replication_factor=1)])[bitacora.TOPICO].result()
+
+
+def reconstruir_desde_bitacora():
+    """Si la base está vacía (se borró, o se pidió --reconstruir), repite la bitácora en orden
+    y la deja exactamente como estaba. Lo que no alcanzó a anotarse se lee después de los
+    tópicos del taller, como siempre. Mientras dura, la API solo acepta lecturas."""
+    with conexion() as cur:
+        cur.execute("SELECT EXISTS (SELECT 1 FROM processed_events) AS hay_datos")
+        hay_datos = cur.fetchone()["hay_datos"]
+    lector = abrir_consumidor([bitacora.TOPICO])
+    inicio, final = lector.get_watermark_offsets(TopicPartition(bitacora.TOPICO, 0), timeout=10)
+    if hay_datos or final <= inicio:
+        lector.close()
+        estado["reconstruyendo"] = False
+        return
+    print(f"base vacía: se repiten {final - inicio} registros de la bitácora", flush=True)
+    inventario.reproduciendo = True
+    try:
+        leido = inicio
+        while leido < final:
+            mensaje = lector.poll(1)
+            if mensaje is None or mensaje.error():
+                continue
+            repetir(json.loads(mensaje.value()))
+            leido = mensaje.offset() + 1
+    finally:
+        inventario.reproduciendo = False
+        estado["reconstruyendo"] = False
+        lector.close()
+    print("bitácora repetida: la base quedó como estaba", flush=True)
+
+
+def repetir(registro):
+    if registro["tipo"] == "evento":
+        procesar(registro["topic"], registro["evento"])
+    elif registro["tipo"] == "descartado":
+        with conexion() as cur:
+            evento = registro["evento"]
+            cur.execute("""INSERT INTO processed_events (event_id, event_type, topic) VALUES (%s, %s, %s)
+                           ON CONFLICT DO NOTHING""", (evento["event_id"], evento.get("event_type", "?"), registro["topic"]))
+    else:
+        try:
+            with transaccion() as cur:
+                bitacora.ejecutar(cur, registro["operacion"], registro["datos"], registro["fecha"])
+        except Exception:
+            traceback.print_exc()  # no debería pasar: se repite sobre el mismo estado que la primera vez
 
 
 def sin_detenerse(funcion):
