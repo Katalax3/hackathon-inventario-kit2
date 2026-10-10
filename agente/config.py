@@ -3,7 +3,8 @@
 import os
 
 BROKER = os.environ.get("BROKER", "localhost:19092")
-BASE_DATOS = os.environ.get("BASE_DATOS", "postgresql://postgres:its@localhost:5432/inventario_agente")
+# Sin contraseña aquí: PostgreSQL la toma de ~/.pgpass o de la variable PGPASSWORD.
+BASE_DATOS = os.environ.get("BASE_DATOS", "postgresql://postgres@localhost:5432/inventario_agente")
 PUERTO = int(os.environ.get("PUERTO", "8000"))
 PUERTO_HTTPS = int(os.environ.get("PUERTO_HTTPS", "8443"))
 

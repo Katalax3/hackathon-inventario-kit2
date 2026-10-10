@@ -25,6 +25,7 @@ def main():
     args = parser.parse_args()
 
     base_datos.crear_si_falta()
+    base_datos.asegurar_unico()
     base_datos.abrir(reconstruir=args.reconstruir)
     # Si la base quedó vacía (se borró o se pidió --reconstruir), el consumidor repite primero la bitácora.
     consumidor.preparar_bitacora()

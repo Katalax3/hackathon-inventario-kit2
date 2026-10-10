@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -56,6 +57,13 @@ def conflicto(request, error):
 @app.exception_handler(Invalido)
 def invalido(request, error):
     return JSONResponse({"detail": str(error)}, status_code=422)
+
+
+@app.exception_handler(RequestValidationError)
+def cuerpo_invalido(request, error):
+    # El contrato pide {"detail": "<mensaje>"} con texto, no la lista que arma FastAPI.
+    mensajes = [f"{'.'.join(str(p) for p in e['loc'][1:])}: {e['msg']}" for e in error.errors()]
+    return JSONResponse({"detail": "; ".join(mensajes)}, status_code=422)
 
 
 # --- Cuerpos de las peticiones -----------------------------------------------------------

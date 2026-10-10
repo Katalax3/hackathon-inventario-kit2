@@ -29,7 +29,9 @@ uv run --python 3.12 --with-requirements agente/requirements.txt agente/main.py
 ```
 
 La conexión se configura con la variable `BASE_DATOS`; el valor por defecto está en `config.py`:
-`postgresql://postgres:its@localhost:5432/inventario_agente`.
+`postgresql://postgres@localhost:5432/inventario_agente`. La contraseña no va en el código: se lee
+de `~/.pgpass` (una línea `localhost:5432:*:postgres:TU_CONTRASEÑA`, con permisos `chmod 600`) o de
+la variable `PGPASSWORD`.
 
 La primera vez lee todo el historial de los tópicos (unos 1,700 eventos, cerca de un minuto).
 En la pantalla de Almacén, "Por leer (lag)" llega a 0 cuando termina.

@@ -50,6 +50,18 @@ def crear_si_falta():
             conn.execute(ESQUEMA.read_text())
 
 
+candado_unico = None
+
+
+def asegurar_unico():
+    """Solo un agente a la vez: dos sobre la misma base publicarían eventos repetidos en Kafka.
+    El candado dura mientras el proceso tenga abierta esta conexión."""
+    global candado_unico
+    candado_unico = psycopg.connect(config.BASE_DATOS, autocommit=True)
+    if not candado_unico.execute("SELECT pg_try_advisory_lock(2)").fetchone()[0]:
+        raise SystemExit("Ya hay otro agente encendido con esta base. Apágalo antes: pkill -f agente/main.py")
+
+
 def abrir(reconstruir=False):
     pool.open(wait=True)
     with transaccion() as cur:

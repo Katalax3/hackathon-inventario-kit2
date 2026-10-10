@@ -16,6 +16,7 @@ function estadoLinea(l) {
 
 // Por qué una orden no tiene piezas que mostrar.
 function sinPiezas(orden) {
+  if (orden.deleted) return "Orden dada de baja: sus reservas se liberaron y sus faltantes se cerraron.";
   if (!orden.approved_inspections) return "Todavía no tiene una inspección aprobada: aún no pide piezas.";
   return "Sus inspecciones aprobadas no pidieron piezas para comprar (todo salió bien o a reparar): no hay nada que retirar.";
 }

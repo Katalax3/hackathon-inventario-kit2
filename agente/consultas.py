@@ -36,7 +36,6 @@ def kardex(cur, part_id):
 
 def materiales(cur, codigo):
     orden = exigir(orden_por_codigo(cur, codigo), f"no existe la orden {codigo}")
-    # En una orden dada de baja se muestran también las líneas liberadas, como historial.
     cur.execute("""SELECT n.inspection_item_id, n.bom_line_id, n.part_id, n.name, p.sku, n.required_qty AS required,
                      COALESCE(SUM(r.quantity - r.issued_qty) FILTER (WHERE r.status = 'active'), 0)::int AS reserved,
                      COALESCE(SUM(r.issued_qty), 0)::int AS issued,
@@ -46,9 +45,9 @@ def materiales(cur, codigo):
                    LEFT JOIN reservations r ON r.work_order_id = n.work_order_id AND r.bom_line_id = n.bom_line_id
                    LEFT JOIN shortages s ON s.work_order_id = n.work_order_id AND s.bom_line_id = n.bom_line_id
                                         AND s.status = 'open'
-                   WHERE n.work_order_id = %s AND (n.active OR %s)
+                   WHERE n.work_order_id = %s AND n.active
                    GROUP BY n.work_order_id, n.bom_line_id, p.part_id, s.shortage_id
-                   ORDER BY n.bom_line_id""", (orden["work_order_id"], orden["deleted_at"] is not None))
+                   ORDER BY n.bom_line_id""", (orden["work_order_id"],))
     lineas = cur.fetchall()
     cur.execute("SELECT brand, model_name FROM models WHERE model_id = %s", (orden["model_id"],))
     modelo = cur.fetchone()
