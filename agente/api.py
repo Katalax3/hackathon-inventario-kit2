@@ -16,6 +16,15 @@ from inventario import Conflicto, Invalido, NoExiste
 app = FastAPI(title="Inventario del taller")
 
 
+@app.middleware("http")
+async def sin_cache(request, call_next):
+    """El navegador siempre pregunta si hay una versión nueva de las pantallas y los datos;
+    si no cambió, el servidor responde 304 y no se vuelve a descargar."""
+    respuesta = await call_next(request)
+    respuesta.headers["Cache-Control"] = "no-cache"
+    return respuesta
+
+
 @app.exception_handler(NoExiste)
 def no_existe(request, error):
     return JSONResponse({"detail": str(error)}, status_code=404)

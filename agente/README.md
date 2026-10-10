@@ -14,32 +14,23 @@ Simulador del taller ──Kafka──► consumidor.py ──► PostgreSQL (in
 
 ## Qué necesitas
 
-- El kit levantado: `docker compose up -d` en la carpeta de arriba.
-- PostgreSQL con la base `inventario_agente` (ver abajo).
+- Docker con el contenedor de PostgreSQL corriendo (por defecto se llama `postsql`; otro nombre se
+  indica con la variable `CONTENEDOR_POSTGRES`).
 - [uv](https://docs.astral.sh/uv/). Instala solo Python 3.12 y las librerías. Hace falta 3.12 porque
   `confluent-kafka` todavía no funciona con Python 3.14.
 
-## 1. Crear la base de datos (una sola vez)
-
-La base sale de `../inventario.dump`, que trae las tablas vacías. En el contenedor `postsql`:
-
-```bash
-docker cp ../inventario.dump postsql:/tmp/inventario.dump
-docker exec postsql createdb -U postgres inventario_agente
-docker exec postsql pg_restore -U postgres -d inventario_agente --no-owner /tmp/inventario.dump
-docker exec postsql rm /tmp/inventario.dump
-```
-
-La conexión se configura con la variable `BASE_DATOS`. El valor por defecto está en
-`config.py`: `postgresql://postgres:its@localhost:5432/inventario_agente`.
-
-## 2. Arrancar
+## Arrancar (un comando)
 
 Desde la carpeta del kit:
 
 ```bash
-uv run --python 3.12 --with-requirements agente/requirements.txt agente/main.py
+agente/arrancar.sh
 ```
+
+El script levanta el kit (`docker compose up -d`). La primera vez también crea la base
+`inventario_agente` desde `inventario.dump` (las tablas vacías), y al final arranca el agente.
+La conexión se configura con la variable `BASE_DATOS`; el valor por defecto está en `config.py`:
+`postgresql://postgres:its@localhost:5432/inventario_agente`.
 
 La primera vez lee todo el historial de los tópicos (unos 1,700 eventos, cerca de un minuto).
 En la pantalla de Almacén, "Por leer (lag)" llega a 0 cuando termina.
@@ -69,19 +60,19 @@ aviso de "conexión no privada". Esa advertencia sale porque el certificado lo f
 Las etiquetas son Code 128 (`../labels/etiquetas-demo.pdf`). En cada campo puedes tocar 📷 o
 escribir el código; un lector USB también funciona porque "escribe" y manda Enter.
 
-## 3. Reconstruir desde cero
+## Reconstruir desde cero
 
 Borra los datos de la base y vuelve a leer los tópicos desde el inicio:
 
 ```bash
-uv run --python 3.12 --with-requirements agente/requirements.txt agente/main.py --reconstruir
+agente/arrancar.sh --reconstruir
 ```
 
 Las salidas, transferencias, conteos y recepciones relacionadas a mano se hacen por la API y no
 viven en Kafka, así que la reconstrucción no las recupera. Por eso el jurado revisa la
 reconstrucción antes de la demo.
 
-## 4. Pruebas de contrato
+## Pruebas de contrato
 
 Con el servicio corriendo:
 
@@ -93,7 +84,8 @@ uv run --python 3.12 --with confluent-kafka==2.6.1 --with jsonschema contract-te
 
 | Archivo | Qué hace |
 |---|---|
-| `main.py` | Arranca todo: consumidor, publicador de eventos y servidor web |
+| `arrancar.sh` | Un comando: levanta el kit, crea la base la primera vez y arranca el agente |
+| `main.py` | Arranca el agente: consumidor, publicador de eventos y servidor web |
 | `config.py` | Direcciones del broker y de la base, puertos |
 | `base_datos.py` | Conexión a PostgreSQL y el candado de escritura |
 | `consumidor.py` | Lee Kafka, aplica cada evento una sola vez, reintenta lo que llega antes de tiempo, manda errores a `inventory.dlq` y publica `inventory.events` |
@@ -103,24 +95,7 @@ uv run --python 3.12 --with confluent-kafka==2.6.1 --with jsonschema contract-te
 | `api.py` | Rutas HTTP (las del contrato y unas extra para las pantallas) |
 | `web/` | Pantallas: HTML, CSS y JavaScript sin frameworks |
 
-## Decisiones (resumen para el documento de una página)
+## Decisiones
 
-- **Idempotencia.** Cada evento aplicado guarda su `event_id` en `processed_events` dentro de la
-  misma transacción que sus cambios. Un evento repetido se reconoce y se ignora. Las compras
-  además tienen un índice único por línea de compra.
-- **Reservas dobles y concurrencia.** Toda escritura (eventos y API) toma el mismo candado de
-  PostgreSQL (`pg_advisory_xact_lock`), así que nunca hay dos reservas calculándose a la vez sobre
-  la misma existencia. Lo disponible se recalcula dentro de la transacción, y nunca se reserva
-  más de lo que hay.
-- **Compras y catálogo.** Se compara `part_number` con el `sku` sin importar mayúsculas ni espacios
-  de más. Si no coincide con ninguna pieza se espera 3 segundos, por si la pieza viene en camino
-  por `shop.catalog`. Si sigue sin coincidir, o coincide con varias piezas, va a revisión manual
-  (`/unmatched-receipts`), donde se elige la pieza.
-- **Kits.** Se inventarían los componentes, porque cada línea de la lista de partes trae su
-  `part_id`. Una línea sin `part_id` (por ejemplo, un kit sin clave) no se puede reservar y queda
-  como faltante sin identificar.
-- **Desorden.** Si un evento menciona algo que aún no existe (orden, pieza, línea), se guarda en
-  `pending_events` y se reintenta cada segundo. Los eventos de la misma llave esperan en fila para
-  no perder su orden. Al arrancar se lee todo `shop.catalog` antes que lo demás.
-- **Libro mayor.** El stock nunca se edita: siempre es la suma de `movements`, y la base impide
-  modificar o borrar movimientos.
+Cómo relacionamos compras con el catálogo, cómo manejamos kits, cómo evitamos reservas dobles y
+cómo garantizamos idempotencia: [DECISIONES.md](DECISIONES.md).

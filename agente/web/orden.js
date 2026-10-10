@@ -9,7 +9,7 @@ function estadoLinea(l) {
   return "";
 }
 
-// Por qué una orden no tiene piezas que reservar ni retirar.
+// Por qué una orden no tiene piezas que mostrar.
 function sinPiezas(orden) {
   if (!orden.approved_inspections) return "Todavía no tiene una inspección aprobada: aún no pide piezas.";
   return "Sus inspecciones aprobadas no pidieron piezas para comprar (todo salió bien o a reparar): no hay nada que retirar.";
@@ -66,9 +66,9 @@ async function cargarOrden(codigo) {
 let codigosSugeridos = [];
 
 async function cargarListaDeOrdenes() {
-  // Solo se sugieren las órdenes de la demo (abiertas en el panel), aunque estén dadas de baja.
-  const { items } = await api("GET", "/work-orders?demo=true");
-  const codigos = items.map(o => o.code);
+  // Se sugieren todas las órdenes; primero las de la demo (abiertas en el panel, aunque estén dadas de baja).
+  const [demo, todas] = await Promise.all([api("GET", "/work-orders?demo=true"), api("GET", "/work-orders")]);
+  const codigos = [...new Set([...demo.items, ...todas.items].map(o => o.code))];
   // Solo se redibuja si cambió, para no cerrar la lista mientras alguien la está viendo.
   if (codigos.join() !== codigosSugeridos.join()) {
     codigosSugeridos = codigos;
