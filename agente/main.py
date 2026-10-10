@@ -8,7 +8,7 @@ import argparse
 import threading
 from pathlib import Path
 
-import uvicorn
+import uvicorn #type: ignore
 
 import base_datos
 import config
