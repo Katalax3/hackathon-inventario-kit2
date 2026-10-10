@@ -20,6 +20,19 @@ Simulador del taller ──Kafka──► consumidor.py ──► PostgreSQL (in
 - [uv](https://docs.astral.sh/uv/). Instala solo Python 3.12 y las librerías. Hace falta 3.12 porque
   `confluent-kafka` todavía no funciona con Python 3.14.
 
+## Configurar (una vez por computadora)
+
+Copia la plantilla y escribe los datos de tu PostgreSQL (sobre todo `DB_CONTRASENA`):
+
+```bash
+cp agente/.env.example agente/.env
+```
+
+`agente/.env` no se sube a git, así que cada computadora tiene el suyo y la contraseña no viaja con
+el proyecto. Trae también el broker y los puertos del agente. Una variable de entorno con el mismo
+nombre tiene prioridad sobre el archivo. Si dejas `DB_CONTRASENA` vacía, PostgreSQL la busca en
+`~/.pgpass` o en `PGPASSWORD`.
+
 ## Arrancar (un comando)
 
 Desde la carpeta del kit:
@@ -27,11 +40,6 @@ Desde la carpeta del kit:
 ```bash
 uv run --python 3.12 --with-requirements agente/requirements.txt agente/main.py
 ```
-
-La conexión se configura con la variable `BASE_DATOS`; el valor por defecto está en `config.py`:
-`postgresql://postgres@localhost:5432/inventario_agente`. La contraseña no va en el código: se lee
-de `~/.pgpass` (una línea `localhost:5432:*:postgres:TU_CONTRASEÑA`, con permisos `chmod 600`) o de
-la variable `PGPASSWORD`.
 
 La primera vez lee todo el historial de los tópicos (unos 1,700 eventos, cerca de un minuto).
 En la pantalla de Almacén, "Por leer (lag)" llega a 0 cuando termina.
@@ -99,7 +107,8 @@ sudo ufw allow 8443/tcp                                          # celular en la
 | Archivo | Qué hace |
 |---|---|
 | `main.py` | Arranca el agente: consumidor, publicador de eventos y servidor web |
-| `config.py` | Direcciones del broker y de la base, puertos |
+| `config.py` | Lee `.env`: direcciones del broker y de la base, puertos |
+| `.env.example` | Plantilla de `.env` (el `.env` real no se sube a git) |
 | `base_datos.py` | Conexión a PostgreSQL, el candado de escritura y la creación de la base si no existe |
 | `bitacora.py` | Anota en orden todo lo que se aplica, para reconstruir la base exactamente |
 | `esquema.sql` | Las tablas, sacadas de `inventario.dump` |
